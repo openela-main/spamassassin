@@ -1,0 +1,40 @@
+diff --git a/t/all_modules.t b/t/all_modules.t
+index 855395f..a976012 100755
+--- a/t/all_modules.t
++++ b/t/all_modules.t
+@@ -12,15 +12,7 @@ plan tests => 5;
+ 
+ my $plugins = '';
+ 
+-if (eval { require BSD::Resource; }) {
+-    $plugins .= "loadplugin Mail::SpamAssassin::Plugin::ResourceLimits\n"
+-}
+-if (eval { require Net::CIDR::Lite; }) {
+-    $plugins .= "loadplugin Mail::SpamAssassin::Plugin::URILocalBL\n";
+-}
+-
+ tstpre ("
+-loadplugin Mail::SpamAssassin::Plugin::RelayCountry
+ loadplugin Mail::SpamAssassin::Plugin::URIDNSBL
+ loadplugin Mail::SpamAssassin::Plugin::Hashcash
+ loadplugin Mail::SpamAssassin::Plugin::SPF
+diff --git a/t/data/01_test_rules.pre b/t/data/01_test_rules.pre
+index c4681ca..1694ddf 100644
+--- a/t/data/01_test_rules.pre
++++ b/t/data/01_test_rules.pre
+@@ -21,7 +21,6 @@ loadplugin Mail::SpamAssassin::Plugin::WLBLEval
+ loadplugin Mail::SpamAssassin::Plugin::VBounce
+ 
+ # Try to load some non-default plugins also
+-loadplugin Mail::SpamAssassin::Plugin::RelayCountry
+ loadplugin Mail::SpamAssassin::Plugin::DCC
+ loadplugin Mail::SpamAssassin::Plugin::AntiVirus
+ loadplugin Mail::SpamAssassin::Plugin::AWL
+@@ -32,7 +31,6 @@ loadplugin Mail::SpamAssassin::Plugin::Shortcircuit
+ loadplugin Mail::SpamAssassin::Plugin::ASN
+ #loadplugin Mail::SpamAssassin::Plugin::PhishTag
+ #loadplugin Mail::SpamAssassin::Plugin::TxRep
+-loadplugin Mail::SpamAssassin::Plugin::URILocalBL
+ loadplugin Mail::SpamAssassin::Plugin::PDFInfo
+ loadplugin Mail::SpamAssassin::Plugin::HashBL
+ #loadplugin Mail::SpamAssassin::Plugin::ResourceLimits

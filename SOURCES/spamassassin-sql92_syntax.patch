@@ -1,0 +1,354 @@
+diff --git a/lib/Mail/SpamAssassin/AutoWhitelist.pm b/lib/Mail/SpamAssassin/AutoWhitelist.pm
+index 627e249..cc3c97b 100644
+--- a/lib/Mail/SpamAssassin/AutoWhitelist.pm
++++ b/lib/Mail/SpamAssassin/AutoWhitelist.pm
+@@ -128,35 +128,35 @@ sub check_address {
+   my $entry = $self->{checker}->get_addr_entry ($fulladdr, $signedby);
+   $self->{entry} = $entry;
+ 
+-  if (!$entry->{msgcount}) {
++  if (!$entry->{count}) {
+     # no entry found
+     if (defined $origip) {
+       # try upgrading a default entry (probably from "add-addr-to-foo")
+       my $noipaddr = $self->pack_addr ($addr, undef);
+       my $noipent = $self->{checker}->get_addr_entry ($noipaddr, undef);
+ 
+-      if (defined $noipent->{msgcount} && $noipent->{msgcount} > 0) {
++      if (defined $noipent->{count} && $noipent->{count} > 0) {
+ 	dbg("auto-whitelist: found entry w/o IP address for $addr: replacing with $origip");
+ 	$self->{checker}->remove_entry($noipent);
+         # Now assign proper entry the count and totscore values of the
+         # no-IP entry instead of assigning the whole value to avoid
+         # wiping out any information added to the previous entry.
+-	$entry->{msgcount} = $noipent->{msgcount};
++	$entry->{count} = $noipent->{count};
+ 	$entry->{totscore} = $noipent->{totscore};
+       }
+     }
+   }
+ 
+-  if ($entry->{msgcount} < 0 ||
+-      $entry->{msgcount} != $entry->{msgcount} ||  # test for NaN
++  if ($entry->{count} < 0 ||
++      $entry->{count} != $entry->{count} ||  # test for NaN
+       $entry->{totscore} != $entry->{totscore})
+   {
+     warn "auto-whitelist: resetting bad data for ($addr, $origip), ".
+-         "count: $entry->{msgcount}, totscore: $entry->{totscore}\n";
+-    $entry->{msgcount} = $entry->{totscore} = 0;
++         "count: $entry->{count}, totscore: $entry->{totscore}\n";
++    $entry->{count} = $entry->{totscore} = 0;
+   }
+ 
+-  return !$entry->{msgcount} ? undef : $entry->{totscore} / $entry->{msgcount};
++  return !$entry->{count} ? undef : $entry->{totscore} / $entry->{count};
+ }
+ 
+ ###########################################################################
+@@ -170,7 +170,7 @@ whitelist correction.
+ 
+ sub count {
+   my $self = shift;
+-  return $self->{entry}->{msgcount};
++  return $self->{entry}->{count};
+ }
+ 
+ 
+@@ -195,7 +195,7 @@ sub add_score {
+     return;		# don't try to add a NaN
+   }
+ 
+-  $self->{entry}->{msgcount} ||= 0;
++  $self->{entry}->{count} ||= 0;
+   $self->{checker}->add_score($self->{entry}, $score);
+ }
+ 
+diff --git a/lib/Mail/SpamAssassin/DBBasedAddrList.pm b/lib/Mail/SpamAssassin/DBBasedAddrList.pm
+index 6aaed86..a1adca3 100644
+--- a/lib/Mail/SpamAssassin/DBBasedAddrList.pm
++++ b/lib/Mail/SpamAssassin/DBBasedAddrList.pm
+@@ -125,10 +125,10 @@ sub get_addr_entry {
+ 	addr			=> $addr,
+   };
+ 
+-  $entry->{msgcount} = $self->{accum}->{$addr} || 0;
++  $entry->{count} = $self->{accum}->{$addr} || 0;
+   $entry->{totscore} = $self->{accum}->{$addr.'|totscore'} || 0;
+ 
+-  dbg("auto-whitelist: db-based $addr scores ".$entry->{msgcount}.'/'.$entry->{totscore});
++  dbg("auto-whitelist: db-based $addr scores ".$entry->{count}.'/'.$entry->{totscore});
+   return $entry;
+ }
+ 
+@@ -137,15 +137,15 @@ sub get_addr_entry {
+ sub add_score {
+     my($self, $entry, $score) = @_;
+ 
+-    $entry->{msgcount} ||= 0;
++    $entry->{count} ||= 0;
+     $entry->{addr}  ||= '';
+ 
+-    $entry->{msgcount}++;
++    $entry->{count}++;
+     $entry->{totscore} += $score;
+ 
+-    dbg("auto-whitelist: add_score: new count: ".$entry->{msgcount}.", new totscore: ".$entry->{totscore});
++    dbg("auto-whitelist: add_score: new count: ".$entry->{count}.", new totscore: ".$entry->{totscore});
+ 
+-    $self->{accum}->{$entry->{addr}} = $entry->{msgcount};
++    $self->{accum}->{$entry->{addr}} = $entry->{count};
+     $self->{accum}->{$entry->{addr}.'|totscore'} = $entry->{totscore};
+     return $entry;
+ }
+diff --git a/lib/Mail/SpamAssassin/Plugin/TxRep.pm b/lib/Mail/SpamAssassin/Plugin/TxRep.pm
+index 2ef3ddc..08b432b 100644
+--- a/lib/Mail/SpamAssassin/Plugin/TxRep.pm
++++ b/lib/Mail/SpamAssassin/Plugin/TxRep.pm
+@@ -1521,7 +1521,7 @@ sub check_reputation {
+ #--------------------------------------------------------------------------
+ 
+ ###########################################################################
+-sub count {my $self=shift;  return (defined $self->{checker})? $self->{entry}->{msgcount}    : undef;}
++sub count {my $self=shift;  return (defined $self->{checker})? $self->{entry}->{count}    : undef;}
+ sub total {my $self=shift;  return (defined $self->{checker})? $self->{entry}->{totscore} : undef;}
+ ###########################################################################
+ 
+@@ -1538,11 +1538,11 @@ sub get_sender {
+   $self->{entry} = $entry;
+   $origip        = $origip || 'none';
+ 
+-  if ($entry->{msgcount}<0 || $entry->{msgcount}=~/^(nan|)$/ || $entry->{totscore}=~/^(nan|)$/) {
+-    warn "TxRep: resetting bad data for ($addr, $origip), count: $entry->{msgcount}, totscore: $entry->{totscore}\n";
+-    $self->{entry}->{msgcount} = $self->{entry}->{totscore} = 0;
++  if ($entry->{count}<0 || $entry->{count}=~/^(nan|)$/ || $entry->{totscore}=~/^(nan|)$/) {
++    warn "TxRep: resetting bad data for ($addr, $origip), count: $entry->{count}, totscore: $entry->{totscore}\n";
++    $self->{entry}->{count} = $self->{entry}->{totscore} = 0;
+   }
+-  return $self->{entry}->{msgcount};
++  return $self->{entry}->{count};
+ }
+ 
+ 
+@@ -1557,7 +1557,7 @@ sub add_score {
+     warn "TxRep: attempt to add a $score to TxRep entry ignored\n";
+     return;                                       # don't try to add a NaN
+   }
+-  $self->{entry}->{msgcount} ||= 0;
++  $self->{entry}->{count} ||= 0;
+ 
+   # performing the dilution aging correction
+   if (defined $self->total() && defined $self->count() && defined $self->{txrep_dilution_factor}) {
+@@ -1587,9 +1587,9 @@ sub remove_score {
+   }
+   # no reversal dilution aging correction (not easily possible),
+   # just removing the original message score
+-  if ($self->{entry}->{msgcount} > 2)
+-        {$self->{entry}->{msgcount} -= 2;}
+-  else  {$self->{entry}->{msgcount}  = 0;}
++  if ($self->{entry}->{count} > 2)
++        {$self->{entry}->{count} -= 2;}
++  else  {$self->{entry}->{count}  = 0;}
+   # subtract 2, and add a score; hence decrementing by 1
+   $self->{checker}->add_score($self->{entry}, -1*$score);
+ }
+diff --git a/lib/Mail/SpamAssassin/SQLBasedAddrList.pm b/lib/Mail/SpamAssassin/SQLBasedAddrList.pm
+index 278f792..f3f40b4 100644
+--- a/lib/Mail/SpamAssassin/SQLBasedAddrList.pm
++++ b/lib/Mail/SpamAssassin/SQLBasedAddrList.pm
+@@ -45,7 +45,7 @@ CREATE TABLE awl (
+   username varchar(100) NOT NULL default '',
+   email varchar(255) NOT NULL default '',
+   ip varchar(40) NOT NULL default '',
+-  msgcount int(11) NOT NULL default '0',
++  count int(11) NOT NULL default '0',
+   totscore float NOT NULL default '0',
+   signedby varchar(255) NOT NULL default '',
+   PRIMARY KEY (username,email,signedby,ip)
+@@ -191,7 +191,7 @@ sub get_addr_entry {
+ 
+   my $entry = { addr     => $addr,
+                 exists_p => 0,
+-                msgcount    => 0,
++                count    => 0,
+                 totscore => 0,
+                 signedby => $signedby,
+               };
+@@ -200,7 +200,7 @@ sub get_addr_entry {
+ 
+   return $entry  unless $email ne '' && (defined $ip || defined $signedby);
+ 
+-  my $sql = "SELECT msgcount, totscore FROM $self->{tablename} " .
++  my $sql = "SELECT count, totscore FROM $self->{tablename} " .
+             "WHERE username = ? AND email = ?";
+   my @args = ( $email );
+   if (!$self->{_with_awl_signer}) {
+@@ -225,7 +225,7 @@ sub get_addr_entry {
+   if (!$rc) { # there was an error, but try to go on
+     info("auto-whitelist: sql-based get_addr_entry %s: SQL error: %s",
+          join('|',@args), $sth->errstr);
+-    $entry->{msgcount} = 0;
++    $entry->{count} = 0;
+     $entry->{totscore} = 0;
+   }
+   else {
+@@ -234,8 +234,8 @@ sub get_addr_entry {
+     # how to combine data if there are several entries (like signed by
+     # an author domain and by a remailer)?  for now just take an average
+     while ( defined($aryref = $sth->fetchrow_arrayref()) ) {
+-      if (defined $entry->{msgcount} && defined $aryref->[1]) {
+-        $entry->{msgcount} = $aryref->[0];
++      if (defined $entry->{count} && defined $aryref->[1]) {
++        $entry->{count} = $aryref->[0];
+         $entry->{totscore} = $aryref->[1];
+       }
+       $entry->{exists_p} = 1;
+@@ -247,8 +247,8 @@ sub get_addr_entry {
+   }
+   $sth->finish();
+ 
+-  dbg("auto-whitelist: sql-based %s scores %s, msgcount %s",
+-      join('|',@args), $entry->{totscore}, $entry->{msgcount});
++  dbg("auto-whitelist: sql-based %s scores %s, count %s",
++      join('|',@args), $entry->{totscore}, $entry->{count});
+ 
+   return $entry;
+ }
+@@ -275,7 +275,7 @@ sub add_score {
+   
+   my ($email, $ip) = $self->_unpack_addr($entry->{addr});
+ 
+-  $entry->{msgcount} += 1;
++  $entry->{count} += 1;
+   $entry->{totscore} += $score;
+   my $signedby = $entry->{signedby};
+   
+@@ -286,7 +286,7 @@ sub add_score {
+ 
+   my $inserted = 0;
+ 
+-  { my @fields = qw(username email ip msgcount totscore);
++  { my @fields = qw(username email ip count totscore);
+     my @signedby;
+     if ($self->{_with_awl_signer}) {
+       push(@fields, 'signedby');
+@@ -327,9 +327,9 @@ sub add_score {
+     # insert failed, assume primary key constraint, so try the update
+ 
+     my $sql = "UPDATE $self->{tablename} ".
+-              "SET msgcount = ?, totscore = totscore + ? ".
++              "SET count = ?, totscore = totscore + ? ".
+               "WHERE username = ? AND email = ?";
+-    my(@args) = ($entry->{msgcount}, $score, $self->{_username}, $email);
++    my(@args) = ($entry->{count}, $score, $self->{_username}, $email);
+     if ($self->{_with_awl_signer}) {
+       my @signedby = !defined $signedby ? () : split(' ', lc $signedby);
+       if (!@signedby) {
+@@ -352,8 +352,8 @@ sub add_score {
+            join('|',@args), $sth->errstr);
+     } else {
+       dbg("auto-whitelist: sql-based add_score/update ".
+-          "new msgcount: %s, new totscore: %s for %s",
+-          $entry->{msgcount}, $entry->{totscore}, join('|',@args));
++          "new count: %s, new totscore: %s for %s",
++          $entry->{count}, $entry->{totscore}, join('|',@args));
+       $entry->{exists_p} = 1;
+     }
+   }
+diff --git a/sql/README.awl b/sql/README.awl
+index 68de4a1..a1ddf40 100644
+--- a/sql/README.awl
++++ b/sql/README.awl
+@@ -75,7 +75,7 @@ setting: "awl") with at least these fields:
+   username varchar(100)	  # this is the username whose e-mail is being filtered
+   email varchar(200)      # this is the address key
+   ip    varchar(40)       # this is the ip key (fits IPv4 or IPv6)
+-  msgcount int(11)        # this is the message counter
++  count int(11)           # this is the message counter
+   totscore float          # this is the total calculated score
+   signedby varchar(255)   # a DKIM or DomainKeys signing domain(s)
+ 
+@@ -109,7 +109,7 @@ CREATE TABLE awl (
+   username varchar(100) NOT NULL default '',
+   email varchar(255) NOT NULL default '',
+   ip varchar(40) NOT NULL default '',
+-  msgcount int(11) NOT NULL default '0',
++  count int(11) NOT NULL default '0',
+   totscore float NOT NULL default '0',
+   signedby varchar(255) NOT NULL default '',
+   PRIMARY KEY (username,email,signedby,ip)
+diff --git a/sql/awl_mysql.sql b/sql/awl_mysql.sql
+index a8b6926..0bfa99a 100644
+--- a/sql/awl_mysql.sql
++++ b/sql/awl_mysql.sql
+@@ -2,7 +2,7 @@ CREATE TABLE awl (
+   username varchar(100) NOT NULL default '',
+   email varbinary(255) NOT NULL default '',
+   ip varchar(40) NOT NULL default '',
+-  msgcount int(11) NOT NULL default '0',
++  count int(11) NOT NULL default '0',
+   totscore float NOT NULL default '0',
+   signedby varchar(255) NOT NULL default '',
+   last_hit timestamp NOT NULL default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+diff --git a/sql/awl_pg.sql b/sql/awl_pg.sql
+index 2cb3f3e..4f59d72 100644
+--- a/sql/awl_pg.sql
++++ b/sql/awl_pg.sql
+@@ -2,7 +2,7 @@ CREATE TABLE awl (
+   username varchar(100) NOT NULL default '',
+   email varchar(255) NOT NULL default '',
+   ip varchar(40) NOT NULL default '',
+-  msgcount bigint NOT NULL default '0',
++  count bigint NOT NULL default '0',
+   totscore float NOT NULL default '0',
+   signedby varchar(255) NOT NULL default '',
+   last_hit timestamp NOT NULL default CURRENT_TIMESTAMP,
+diff --git a/sql/txrep_mysql.sql b/sql/txrep_mysql.sql
+index 9a4888b..bbe6b95 100644
+--- a/sql/txrep_mysql.sql
++++ b/sql/txrep_mysql.sql
+@@ -2,7 +2,7 @@ CREATE TABLE txrep (
+   username varchar(100) NOT NULL default '',
+   email varchar(255) NOT NULL default '',
+   ip varchar(40) NOT NULL default '',
+-  msgcount int(11) NOT NULL default '0',
++  count int(11) NOT NULL default '0',
+   totscore float NOT NULL default '0',
+   signedby varchar(255) NOT NULL default '',
+   last_hit timestamp NOT NULL default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+diff --git a/sql/txrep_pg.sql b/sql/txrep_pg.sql
+index 191074c..463006b 100644
+--- a/sql/txrep_pg.sql
++++ b/sql/txrep_pg.sql
+@@ -2,7 +2,7 @@ CREATE TABLE txrep (
+   username varchar(100) NOT NULL default '',
+   email varchar(255) NOT NULL default '',
+   ip varchar(40) NOT NULL default '',
+-  msgcount bigint NOT NULL default '0',
++  count bigint NOT NULL default '0',
+   totscore float NOT NULL default '0',
+   signedby varchar(255) NOT NULL default '',
+   last_hit timestamp NOT NULL default CURRENT_TIMESTAMP,
+diff --git a/UPGRADE b/UPGRADE
+index cfd31ab..b555b0b 100644
+--- a/UPGRADE
++++ b/UPGRADE
+@@ -24,18 +24,6 @@ Note for Users Upgrading to SpamAssassin 3.4.3
+   This is to make sure all the legacy installations and wiki guides etc
+   still using it needlessly get fixed.
+ 
+-- TxRep and Awl plugins has been modified to be compatible 
+-  with latest Postgresql versions.
+-  You should upgrade your sql database running the following command:
+-  MySQL:
+-  "ALTER TABLE `txrep` CHANGE `count` `msgcount` INT(11) NOT NULL DEFAULT '0';"
+-  "ALTER TABLE `awl` CHANGE `count` `msgcount` INT(11) NOT NULL DEFAULT '0';"
+-  "ALTER TABLE `awl` ADD last_hit timestamp NOT NULL default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;"
+-  PostgreSQL:
+-  "ALTER TABLE txrep RENAME COLUMN count TO msgcount;"
+-  "ALTER TABLE awl RENAME COLUMN count TO msgcount;"
+-  "ALTER TABLE awl ADD last_hit timestamp NOT NULL default CURRENT_TIMESTAMP;"
+-
+ - body_part_scan_size 50000, rawbody_part_scan_size 500000 defaults added (Bug 6582)
+   These enable safer and faster scanning of large emails.
+ 
